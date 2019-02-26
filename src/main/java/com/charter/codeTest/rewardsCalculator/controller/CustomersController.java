@@ -3,12 +3,16 @@ package com.charter.codeTest.rewardsCalculator.controller;
 import com.charter.codeTest.rewardsCalculator.domain.CustomerRepository;
 import com.charter.codeTest.rewardsCalculator.domain.CustomerTrxn;
 import com.charter.codeTest.rewardsCalculator.domain.RewardsInfo;
+import com.charter.codeTest.rewardsCalculator.domain.Transaction;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
@@ -32,22 +36,18 @@ public class CustomersController {
     private CustomerRepository customerRepository;
 
     @GetMapping
-    public List<CustomerTrxn> getAllCustomerTransactions(){
-        return customerRepository.findAll();
+    public List<RewardsInfo> getAllCustomerRewards(){
+
+        List<CustomerTrxn> allCustomers = customerRepository.findAll();
+
+        return allCustomers.stream().map(customerTrxn -> calculateRewardsForCustomer(customerTrxn)).collect(Collectors.toList());
     }
 
     @GetMapping(value="/{id}")
     public RewardsInfo getCustomerRewardsById(@PathVariable("id") Long accountId){
 
-        Date currentDate = getCalendarPriorToDays(CURRENT_OFFSET);
-       Date thirtyDaysPriorDate= getCalendarPriorToDays(THIRTY_DAY_OFFSET);
-       Date sixtyDaysPriorDate = getCalendarPriorToDays(SIXTY_DAY_OFFSET);
-       Date ninetyDaysPriorDate = getCalendarPriorToDays(NINTEY_DAY_OFFSET);
 
-        List<CustomerTrxn> thirtyDayTranscactions=customerRepository.findCustomerTrxnByTransactionDateBetweenAndAccountId(thirtyDaysPriorDate,currentDate,accountId);
-        List<CustomerTrxn> sixtyDayTransactions=customerRepository.findCustomerTrxnByTransactionDateBetweenAndAccountId(sixtyDaysPriorDate,thirtyDaysPriorDate,accountId);
-        List<CustomerTrxn> ninetyDayTransactions=customerRepository.findCustomerTrxnByTransactionDateBetweenAndAccountId(ninetyDaysPriorDate,sixtyDaysPriorDate,accountId);
-         return getRewardsInfoOfCustomer(thirtyDayTranscactions,sixtyDayTransactions,ninetyDayTransactions,accountId);
+        return calculateRewardsForCustomer(customerRepository.findByAccountId(accountId));
     }
 
     /**
@@ -58,26 +58,28 @@ public class CustomersController {
     @PostMapping
     public List<CustomerTrxn> createCustomer(){
 
-        for(int i=0; i<100; i++){
+        for(int i=0; i<10; i++){
             CustomerTrxn customer = new CustomerTrxn();
-            customer.setAccountId(ThreadLocalRandom.current().nextLong(1,10));
+            customer.setAccountId(Long.valueOf(i));
             customer.setFirstName(RandomStringUtils.random(10,true,false));
             customer.setLastName(RandomStringUtils.random(8,true,false));
-            customer.setTransactionId(System.currentTimeMillis());
-            customer.setTransactionAmount(new BigDecimal(ThreadLocalRandom.current().nextDouble(10,1000)).setScale(2, RoundingMode.HALF_DOWN).doubleValue());
-            Calendar calendar = Calendar.getInstance();
-            Date currentDate = calendar.getTime();
-            calendar.add(Calendar.DATE,-90);
-            Date ninetyDaysEarlier = calendar.getTime();
-            Date randomDate = new Date(ThreadLocalRandom.current()
-                    .nextLong(ninetyDaysEarlier.getTime(),currentDate.getTime()));
+            customer.setCustomerSpending(new ArrayList<>());
+            for (int k=0;k<10;k++){
+                Calendar calendar = Calendar.getInstance();
+                Date currentDate = calendar.getTime();
+                calendar.add(Calendar.DATE,-90);
+                Date ninetyDaysEarlier = calendar.getTime();
+                Transaction transaction = new Transaction();
+                Date randomDate = new Date(ThreadLocalRandom.current()
+                        .nextLong(ninetyDaysEarlier.getTime(),currentDate.getTime()));
+                LocalDate transactionDate = randomDate.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+                transaction.setDate(transactionDate);
+                transaction.setAmountSpent(new BigDecimal(ThreadLocalRandom.current().nextDouble(10,1000)).setScale(2, RoundingMode.HALF_DOWN).doubleValue());
+                customer.getCustomerSpending().add(transaction);
+            }
 
-            customer.setTransactionDate(randomDate);
             customerRepository.save(customer);
         }
-
-
-
         return customerRepository.findAll();
     }
 
@@ -97,43 +99,62 @@ public class CustomersController {
         return calendar.getTime();
     }
 
-    public RewardsInfo  getRewardsInfoOfCustomer(List<CustomerTrxn> thirtyDayTransactions,List<CustomerTrxn> sixtyDayTransactions,List<CustomerTrxn> ninetyDayTransactions, Long accountId){
 
-        RewardsInfo rewardsInfoOfCustomer = new RewardsInfo();
-        rewardsInfoOfCustomer.setAccountId(accountId);
-        rewardsInfoOfCustomer.setRewardPointsForPastThirtyDays(calculateRewardPointsForTransactions(thirtyDayTransactions));
-        rewardsInfoOfCustomer.setRewardPointsBetweenPastThirtyToSixtyDays(calculateRewardPointsForTransactions(sixtyDayTransactions));
-        rewardsInfoOfCustomer.setRewardPointsBetweenPastSixtyToNinetyDays(calculateRewardPointsForTransactions(ninetyDayTransactions));
+    public RewardsInfo calculateRewardsForCustomer(CustomerTrxn customer){
 
-        rewardsInfoOfCustomer.setTotalRewardsInPastNinetyDays(
-                rewardsInfoOfCustomer.getRewardPointsForPastThirtyDays()+
-                        rewardsInfoOfCustomer.getRewardPointsBetweenPastThirtyToSixtyDays()+
-                        rewardsInfoOfCustomer.getRewardPointsBetweenPastSixtyToNinetyDays()
-        );
+        RewardsInfo rewardInfoOfCustomer = new RewardsInfo();
+        rewardInfoOfCustomer.setAccountId(customer.getAccountId());
 
-        return rewardsInfoOfCustomer;
+        List<Transaction> customerSpending = customer.getCustomerSpending();
 
-    }
-
-
-    private Long calculateRewardPointsForTransactions(List<CustomerTrxn> customerTransactions){
-        return customerTransactions.stream().map(customerTrxn -> calculateAndReturnPoints(customerTrxn)).collect(Collectors.summingLong(i -> i));
-
-    }
-
-    private Long calculateAndReturnPoints(CustomerTrxn customerTrxn){
-
-        long rewardPoints=0;
-        if(null!=customerTrxn&& HUNDRED_DOLLARS<customerTrxn.getTransactionAmount()){
-            rewardPoints=Math.round(DOUBLE_POINT*(customerTrxn.getTransactionAmount()-HUNDRED_DOLLARS));
+        if(customerSpending.isEmpty()){
+            return rewardInfoOfCustomer ;
         }
+        LocalDate currentTime =  LocalDate.now();
 
-        if(null!=customerTrxn&&FIFTY_DOLLARS<customerTrxn.getTransactionAmount()){
-            rewardPoints+=Math.round(SINGLE_POINT*(customerTrxn.getTransactionAmount()-FIFTY_DOLLARS));
+        LocalDate thirtyDaysEarlier = currentTime.minusDays(THIRTY_DAY_OFFSET);
+
+        LocalDate sixtyDaysEarlier = currentTime.minusDays(SIXTY_DAY_OFFSET);
+
+        LocalDate ninetyDaysEarlier = currentTime.minusDays(NINTEY_DAY_OFFSET);
+
+
+        List<Transaction> thirtyDayTransactions = customerSpending.stream().filter(transaction -> transaction.getDate().isAfter(thirtyDaysEarlier)).collect(Collectors.toList());
+        List<Transaction> ninetyDayTransactions = customerSpending.stream().filter(transaction -> transaction.getDate().isAfter(ninetyDaysEarlier)&&transaction.getDate().isBefore(sixtyDaysEarlier)).collect(Collectors.toList());
+        List<Transaction> sixtyDayTransactions = customerSpending.stream().filter(transaction -> transaction.getDate().isAfter(sixtyDaysEarlier)&&transaction.getDate().isBefore(thirtyDaysEarlier)).collect(Collectors.toList());
+
+        Long thirtyDayRewards = thirtyDayTransactions.stream().map(transaction -> calcualteAndReturnPoints(transaction)).collect(Collectors.summingLong(i -> i));
+        Long ninetyDayRewards = ninetyDayTransactions.stream().map(transaction -> calcualteAndReturnPoints(transaction)).collect(Collectors.summingLong(i -> i));
+        Long sixtyDayRewards = sixtyDayTransactions.stream().map(transaction -> calcualteAndReturnPoints(transaction)).collect(Collectors.summingLong(i -> i));
+
+        rewardInfoOfCustomer.setRewardPointsForPastThirtyDays(thirtyDayRewards);
+        rewardInfoOfCustomer.setRewardPointsBetweenPastThirtyToSixtyDays(sixtyDayRewards);
+        rewardInfoOfCustomer.setRewardPointsBetweenPastSixtyToNinetyDays(ninetyDayRewards);
+
+        rewardInfoOfCustomer.setTotalRewardsInPastNinetyDays(thirtyDayRewards+sixtyDayRewards+ninetyDayRewards);
+
+        return rewardInfoOfCustomer;
+    }
+
+    private Long calcualteAndReturnPoints(Transaction transaction) {
+
+        long rewardPoints = 0;
+        if (null != transaction) {
+
+
+            if (HUNDRED_DOLLARS < transaction.getAmountSpent()) {
+                rewardPoints = Math.round(DOUBLE_POINT * (transaction.getAmountSpent() - HUNDRED_DOLLARS));
+            }
+
+            if (FIFTY_DOLLARS < transaction.getAmountSpent()) {
+                rewardPoints += Math.round(SINGLE_POINT * (transaction.getAmountSpent() - FIFTY_DOLLARS));
+            }
         }
 
         return rewardPoints;
     }
+
+
 
 
 }

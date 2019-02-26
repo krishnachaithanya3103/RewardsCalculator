@@ -1,33 +1,38 @@
 package com.charter.codeTest.rewardsCalculator.domain;
 
 
+import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-import java.util.Date;
+import java.util.List;
 
 @Document(collection="CustomerTrxn")
 public class CustomerTrxn {
 
 
+    @Id
     private Long accountId;
 
     private String firstName;
 
     private String lastName;
 
-    private Long transactionId;
+    private List<Transaction> customerSpending;
 
-    private Date transactionDate;
+    public List<Transaction> getCustomerSpending() {
+        return customerSpending;
+    }
 
-    private Double transactionAmount;
-
+    public void setCustomerSpending(List<Transaction> customerSpending) {
+        this.customerSpending = customerSpending;
+    }
 
     public Long getAccountId() {
         return accountId;
     }
 
     public void setAccountId(Long accountId) {
-        this.accountId = accountId;
+       this.accountId = accountId;
     }
 
     public String getFirstName() {
@@ -44,29 +49,5 @@ public class CustomerTrxn {
 
     public void setLastName(String lastName) {
         this.lastName = lastName;
-    }
-
-    public Long getTransactionId() {
-        return transactionId;
-    }
-
-    public void setTransactionId(Long transactionId) {
-        this.transactionId = transactionId;
-    }
-
-    public Date getTransactionDate() {
-        return transactionDate;
-    }
-
-    public void setTransactionDate(Date transactionDate) {
-        this.transactionDate = transactionDate;
-    }
-
-    public Double getTransactionAmount() {
-        return transactionAmount;
-    }
-
-    public void setTransactionAmount(Double transactionAmount) {
-        this.transactionAmount = transactionAmount;
     }
 }
